@@ -1,0 +1,306 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Mar 12 14:59:55 2019
+
+@author: User
+"""
+#%%
+#1101 台泥
+#1102 亞泥
+#1103 嘉泥
+#1104 環泥
+
+
+
+#%%
+#import re
+#import os
+#import numpy as np
+#import pandas as pd
+#import jeiba
+#
+#News = []
+
+#%% Data frame
+#with open("TBMC_news.txt", 'r', encoding  = 'utf-8' ) as file:
+#    for line in file:
+#        News.append(line.strip('\n'))
+#
+#
+#NewsCluster = []
+#tmp = []
+#for line in News:
+#    if(line == ''):
+#        NewsCluster.append(tmp)
+#        tmp = []
+#    else:
+#        tmp.append(line)
+#
+#
+#news = []
+#for line in NewsCluster:
+#    tmp = [line[2][8:], re.sub('/', '-', line[6][6:]).strip(' ')]
+#    news.append(tmp)
+#
+#newspd = pd.DataFrame(news, columns = ['title', 'date'])
+#
+#num = []
+#seg= []
+#change = []
+#for i in range(len(newspd)):
+#    num.append([])
+#    seg.append([])
+#    change.append([])
+#    
+#newspd['stockno'] = pd.Series(num)
+#newspd['seg'] = pd.Series(seg)
+#newspd['chg'] = pd.Series(change)
+#
+#for i in range(len(newspd)):
+#    if('台泥' in newspd['title'][i]):
+#        newspd['stockno'][i].append('1101')
+#    if('亞泥' in newspd['title'][i]):
+#        newspd['stockno'][i].append('1102')
+#    if('嘉泥' in newspd['title'][i]):
+#        newspd['stockno'][i].append('1103')
+#    if('環泥' in newspd['title'][i]):
+#        newspd['stockno'][i].append('1104')
+#    if('水泥' in newspd['title'][i]):
+#        newspd['stockno'][i].append('666')
+
+#%% Embedding 
+
+
+#stopSet = set()
+#with open("StopWords.txt", "r", encoding = "utf-8") as Sfile:
+#    for word in Sfile:
+#        stopSet.add(word.strip('\n'))    
+#        
+#
+#
+#for i in range(len(newspd)):
+#    tmp = []
+#    date = newspd['date'][i]
+#    text = newspd['title'][i].split(' ')
+#    for item in text:
+#        words = jeiba.cut(item, 1, 1)
+#        for word in words:
+#            if(word not in stopSet):
+#                tmp.append(word)
+#    newspd['seg'][i] = tmp
+    
+
+
+#%% Doc2Vec model
+
+from nltk.tokenize import word_tokenize
+from gensim.models.doc2vec import Doc2Vec
+from gensim.models.doc2vec import TaggedDocument
+from Reporter import reporter
+
+
+m1101 = reporter(1101)
+m1102 = reporter(1102)
+m1103 = reporter(1103)
+m1104 = reporter(1104)
+
+fakenews = [m1101, m1102,m1103,m1104]
+
+summary = []
+for news in fakenews:
+    for i, j in news.news.items():
+        for n in j:
+            summary.append(n)
+
+#summary = []
+#with open('Vocabulary.txt', 'r', encoding = 'utf-8') as f:
+#    for line in f:
+#        summary.append(word_tokenize(line))
+
+corpus = [TaggedDocument(item, [i]) for i, item in enumerate(summary)]
+#modeltext = Doc2Vec(vec_size = 5, negative = 10, dbow_words = 0)
+#modeltext.build_vocab(corpus)
+#model = Doc2Vec(corpus, vec_size = 5, negative = 10, dbow_words = 1)
+
+max_epochs = 50
+vec_size = 10
+alpha = 0.025
+
+modeltext = Doc2Vec(size=vec_size,
+                alpha=alpha, 
+                min_alpha=0.025,
+                min_count=3,
+                dbow_words = 1,
+                window = 5,
+                negative = 10
+                )
+  
+modeltext.build_vocab(corpus)
+
+for epoch in range(max_epochs):
+    print('iteration {0}'.format(epoch))
+    modeltext.train(corpus,
+                total_examples=modeltext.corpus_count,
+                epochs=modeltext.iter)
+    modeltext.alpha -= 0.001
+    modeltext.min_alpha = modeltext.alpha
+
+modeltext.save("d2v.model")
+print("Model Saved")
+
+
+#%%
+def label_redo(l):
+  for i, j in enumerate(l):
+    if((j == 2) and (i != len(l) -1)):
+        k = i+1
+        while((l[k] == 2) and (k != len(l) -1)):
+            k +=1 
+        if(k >= len(l)):
+            break
+        else:
+            l[i] = l[k]
+  return l
+
+#%% date
+
+def get_time(Date):
+  from datetime import datetime
+  year = int(Date[0:4])
+  month = int(Date[5:7])
+  day = int(Date[8:])
+  return datetime(year, month, day)
+
+
+#%%
+  
+def which_one_is_test_data(num, text_model, days):
+  from gensim.models.doc2vec import Doc2Vec
+  from Reporter import reporter
+  
+  model = Doc2Vec.load(text_model)
+  m1 = reporter(1101)
+  m2 = reporter(1102)
+  m3 = reporter(1103)
+  m4 = reporter(1104)
+  midsky = {1101:m1, 1102:m2, 1103:m3, 1104:m4}
+  x_train = []
+  y_train = []
+  x_test = []
+  y_test = []
+  time_line = [i for i, j in midsky[num].news.items()]
+  dead_line = get_time(time_line[days])
+  print(dead_line)
+  
+  for n in range(1101,1105):
+    if(n != num):
+      fakenews = midsky[n]
+      l = fakenews.L
+      news = fakenews.news
+      for i, j in enumerate(news.items()):
+        if(i+1 == len(news)):
+          break
+        for rep in j[1]:
+          if(l[i+1] == 2):
+            break
+          if(get_time(j[0]) > dead_line):
+            continue
+          x_train.append(model.infer_vector(rep))
+          y_train.append(l[i+1])
+    else:
+      fakenews = midsky[n]
+      l = fakenews.L
+      news = fakenews.news
+      for i, j in enumerate(news.items()):
+        if(i+1 == len(news)):
+          break
+        for rep in j[1]:
+          if(l[i+1] == 2):
+            break
+          if(get_time(j[0]) < dead_line):
+            continue
+          x_test.append(model.infer_vector(rep))
+          y_test.append(l[i+1])
+  
+  return [x_train, y_train, x_test, y_test]
+
+
+
+
+
+
+#%% LogisticRegression
+  
+from sklearn.linear_model import LogisticRegression as lr
+from sklearn.preprocessing import MinMaxScaler
+
+def experiment(stock, days):
+  data = which_one_is_test_data(1103, 'd2v.model', 10)
+  train_scaler = MinMaxScaler().fit( data[0])
+  test_scaler = MinMaxScaler().fit( data[2])
+  train_x = train_scaler.transform(data[0])
+  test_x = test_scaler.transform(data[2])
+  train_y = data[1]
+  test_y = data[3]
+
+  clf = lr().fit( train_x, train_y)
+
+  score = clf.score(test_x , test_y)
+#  predict = clf.predict(test_x)
+  return score
+
+#%%
+
+
+
+
+
+  
+
+
+
+
+#%% nn
+#from keras import Sequential
+#from keras.layers import Dense, Dropout
+#from keras.optimizers import SGD
+#  
+#
+#data = which_one_is_test_data(1101, 'd2v.model')
+##
+##x_train = np.array(data[0])
+##y_train = np.array(data[1])
+##x_test = np.array(data[2])
+##y_test = np.array(data[3])
+#
+#
+#model = Sequential()
+#model.add(Dense(100, input_dim=2, activation='sigmoid'))
+#model.add(Dropout(0.5))
+#model.add(Dense(100, activation='sigmoid'))
+#model.add(Dropout(0.5))
+#model.add(Dense(100, activation='sigmoid'))
+#model.add(Dropout(0.5))
+#model.add(Dense(100, activation='sigmoid'))
+#model.add(Dropout(0.5))
+#model.add(Dense(100, activation='sigmoid'))
+#model.add(Dropout(0.5))
+#model.add(Dense(1, activation='softmax'))
+#
+#sgd = SGD(lr=0.1, decay = 0.8, momentum=1.9)
+#model.compile(loss='binary_crossentropy',
+#              optimizer = sgd,
+#              metrics=['accuracy'])
+#
+#model.fit(x, y,
+#          epochs=50,
+#          batch_size=20
+##          validation_data = (x_test, y_test)
+#          )
+#
+#score = model.evaluate(test_x, test_y)
+#predict= model.predict(test_x)
+
+
+
+
